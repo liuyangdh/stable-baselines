@@ -432,9 +432,17 @@ class TRPO(ActorCriticRLModel):
                                                                       batch_size=batch_size,
                                                                       shuffle=True):
                             ob_expert, ac_expert = self.expert_dataset.get_next_batch()
+                            ob_expert = ob_expert.reshape(-1)
+                            ac_expert = ac_expert.reshape(-1)
                             # update running mean/std for reward_giver
-                            if self.reward_giver.normalize:
-                                self.reward_giver.obs_rms.update(np.concatenate((ob_batch, ob_expert), 0))
+                            if isinstance(self.observation_space, gym.spaces.Box):
+                                if self.reward_giver.normalize:
+                                    self.reward_giver.obs_rms.update(np.concatenate((ob_batch, ob_expert), 0))
+
+                            # Reshape observations if needed when using discrete actions
+                            if isinstance(self.observation_space, gym.spaces.Discrete):
+                                if len(ob_batch.shape) == 2:
+                                    ob_batch = ob_batch[:, 0]
 
                             # Reshape actions if needed when using discrete actions
                             if isinstance(self.action_space, gym.spaces.Discrete):

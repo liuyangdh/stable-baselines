@@ -483,6 +483,18 @@ class ActorCriticRLModel(BaseRLModel):
 
         return clipped_actions, states
 
+    def value(self, observation, state=None, mask=None, deterministic=False):
+        if state is None:
+            state = self.initial_state
+        if mask is None:
+            mask = [False for _ in range(self.n_envs)]
+        observation = np.array(observation)
+        vectorized_env = self._is_vectorized_observation(observation, self.observation_space)
+
+        observation = observation.reshape((-1,) + self.observation_space.shape)
+        _, value, _, _ = self.step(observation, state, mask, deterministic=deterministic)
+        return value
+
     def action_probability(self, observation, state=None, mask=None, actions=None):
         if state is None:
             state = self.initial_state

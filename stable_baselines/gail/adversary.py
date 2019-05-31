@@ -50,6 +50,18 @@ class TransitionClassifier(object):
         self.observation_shape = observation_space.shape
         self.actions_shape = action_space.shape
 
+        # Prepocess observations
+        if isinstance(observation_space, gym.spaces.Box):
+            # Continuous observation space
+            self.discrete_obs = False
+            self.n_obs = observation_space.shape[0]
+        elif isinstance(observation_space, gym.spaces.Discrete):
+            self.n_obs = observation_space.n
+            self.discrete_obs = True
+        else:
+            raise ValueError('Observation space not supported: {}'.format(observation_space))
+
+        # Prepocess actions
         if isinstance(action_space, gym.spaces.Box):
             # Continuous action space
             self.discrete_actions = False
@@ -65,12 +77,18 @@ class TransitionClassifier(object):
         self.obs_rms = None
 
         # Placeholders
+        # if isinstance(observation_space, gym.spaces.Discrete):
+        #     self.generator_obs_ph = tf.placeholder(observation_space.dtype, (None,) + (observation_space.n,),
+        #                                            name="observations_ph")
+        #     self.expert_obs_ph = tf.placeholder(observation_space.dtype, (None,) + (observation_space.n,),
+        #                                         name="expert_observations_ph")
+        # else:
         self.generator_obs_ph = tf.placeholder(observation_space.dtype, (None,) + self.observation_shape,
-                                               name="observations_ph")
-        self.generator_acs_ph = tf.placeholder(action_space.dtype, (None,) + self.actions_shape,
-                                               name="actions_ph")
+                                            name="observations_ph")
         self.expert_obs_ph = tf.placeholder(observation_space.dtype, (None,) + self.observation_shape,
                                             name="expert_observations_ph")
+        self.generator_acs_ph = tf.placeholder(action_space.dtype, (None,) + self.actions_shape,
+                                               name="actions_ph")
         self.expert_acs_ph = tf.placeholder(action_space.dtype, (None,) + self.actions_shape,
                                             name="expert_actions_ph")
         # Build graph
@@ -115,12 +133,16 @@ class TransitionClassifier(object):
             if reuse:
                 tf.get_variable_scope().reuse_variables()
 
-            if self.normalize:
-                with tf.variable_scope("obfilter"):
-                    self.obs_rms = RunningMeanStd(shape=self.observation_shape)
-                obs = (obs_ph - self.obs_rms.mean) / self.obs_rms.std
+            if self.discrete_obs:
+                one_hot_obs = tf.one_hot(obs_ph, self.n_actions)
+                obs = tf.cast(one_hot_obs, tf.float32)
             else:
-                obs = obs_ph
+                if self.normalize:
+                    with tf.variable_scope("obfilter"):
+                        self.obs_rms = RunningMeanStd(shape=self.observation_shape)
+                    obs = (obs_ph - self.obs_rms.mean) / self.obs_rms.std
+                else:
+                    obs = obs_ph
 
             if self.discrete_actions:
                 one_hot_actions = tf.one_hot(acs_ph, self.n_actions)
@@ -153,6 +175,10 @@ class TransitionClassifier(object):
         sess = tf.get_default_session()
         if len(obs.shape) == 1:
             obs = np.expand_dims(obs, 0)
+        elif len(obs.shape) == 0:
+            # one discrete observation
+            obs = np.expand_dims(obs, 0)
+
         if len(actions.shape) == 1:
             actions = np.expand_dims(actions, 0)
         elif len(actions.shape) == 0:
